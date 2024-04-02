@@ -40,7 +40,7 @@ func initDb() {
 	paymentMethods := []string{"Credit Card", "PayPal", "Debit Card", "Bitcoin"}
 
 	// Generate and insert transactions
-	for i := 0; i < 10000; i++ {
+	for i := 0; i < 50000; i++ {
 		productIndex := rand.Intn(len(productNames))
 		categoryIndex := rand.Intn(len(categories))
 		priceIndex := rand.Intn(len(unitPrices))
@@ -53,7 +53,7 @@ func initDb() {
 		transaction := Transaction{
 			TransactionID: fmt.Sprintf("TXN%d", rand.Intn(100000)),
 			Timestamp:     time.Now(),
-			CustomerID:    fmt.Sprintf("CUST%d", rand.Intn(10000)),
+			CustomerID:    fmt.Sprintf("CUST%d", rand.Intn(30)),
 			ProductName:   productNames[productIndex],
 			Category:      categories[categoryIndex],
 			Quantity:      quantity,

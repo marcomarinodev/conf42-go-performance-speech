@@ -19,3 +19,11 @@
 
 # Go workspace file
 go.work
+
+# Python
+*.pyc
+__pycache__/
+venv/
+.env
+bin
+lib

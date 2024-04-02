@@ -14,6 +14,11 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+// write behind caching: the application reads and writes data to Redis
+// redis syncs any changed data to the db asynchronously
+// that's because a service can only add new transactions and not modifying or deleting
+// existing ones. Since services reads only from Redis, the data is always up to date.
+
 var ctx = context.Background()
 var rdb = redis.NewClient(&redis.Options{
 	Addr: "localhost:6379",
@@ -22,6 +27,7 @@ var rdb = redis.NewClient(&redis.Options{
 func getTransactionsByCustomerID(customerID string, cacheFlag bool) ([]Transaction, error) {
 
 	if cacheFlag {
+		// TODO use a smarter get as the cache entry key is the transaction ID and not customer ID
 		// check if data is cached in Redis
 		cachedTransactions, err := rdb.Get(ctx, customerID).Result()
 		if err == nil {
@@ -78,14 +84,34 @@ func getTransactionsByCustomerID(customerID string, cacheFlag bool) ([]Transacti
 			return nil, err
 		}
 
-		rdb.Set(ctx, customerID, string(transactionsJSON), 0)
+		fmt.Println("saving the transactions into the cache")
+
+		// Set the JSON data with a specific key
+		// rdb.Set(ctx, customerID, string(transactionsJSON), 0)
+
+		// Set the data as a JSON object, use transaction ID as a key
+		rdb.JSONSet(ctx, customerID, "$", string(transactionsJSON))
 	}
 
 	return transactions, nil
 }
 
+// TODO this function is useful to proof the write behind caching
+// func editTransaction(transactionID string, newCustomerID string) error {
+// 	// get the transaction from the cache
+// 	transaction := rdb.JSONGet(ctx, transactionID, "$")
+
+// 	// update the transaction
+// 	err := rdb.JSONSet(ctx, transactionID, "$.customerID", newCustomerID)
+// 	if err != nil {
+// 		return err
+// 	}
+
+// 	return nil
+// }
+
 func main() {
-	initDbFlag := flag.Bool("init-db", false, "Initialize the database")
+	initDbFlag := flag.Bool("initDb", false, "Initialize the database")
 	cacheFlag := flag.Bool("cache", false, "Cache transactions")
 	flag.Parse()
 
