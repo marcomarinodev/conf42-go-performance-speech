@@ -24,24 +24,51 @@ var rdb = redis.NewClient(&redis.Options{
 	Addr: "localhost:6379",
 })
 
-func getTransactionsByCustomerID(customerID string, cacheFlag bool) ([]Transaction, error) {
+func getTransactionsByCustomerIDFromRedis(customerID string, cacheFlag bool) ([]Transaction, error) {
+
+	transactions := make([]Transaction, 0)
 
 	if cacheFlag {
 		// TODO use a smarter get as the cache entry key is the transaction ID and not customer ID
 		// check if data is cached in Redis
-		cachedTransactions, err := rdb.Get(ctx, customerID).Result()
-		if err == nil {
-			var transactions []Transaction
-			err = json.Unmarshal([]byte(cachedTransactions), &transactions)
-			if err == nil {
-				return transactions, nil
-			}
-
+		keys, err := rdb.Keys(ctx, "*").Result()
+		if err != nil {
 			return nil, err
+		}
+
+		for _, key := range keys {
+			cachedTransaction, err := rdb.Get(ctx, key).Result()
+			if err == nil {
+				var transaction Transaction
+				err = json.Unmarshal([]byte(cachedTransaction), &transaction)
+				if err == nil && transaction.CustomerID == customerID {
+					transactions = append(transactions, transaction)
+				}
+			}
 		}
 	}
 
-	// if data is not cached, fetch from mongo
+	if cacheFlag {
+		// Cache data in Redis for future use
+		transactionsJSON, err := json.Marshal(transactions)
+		if err != nil {
+			return nil, err
+		}
+
+		fmt.Println("saving the transactions into the cache")
+
+		// Set the JSON data with a specific key
+		// rdb.Set(ctx, customerID, string(transactionsJSON), 0)
+
+		// Set the data as a JSON object, use transaction ID as a key
+		rdb.JSONSet(ctx, customerID, "$", string(transactionsJSON))
+	}
+
+	return transactions, nil
+}
+
+func getTransactionsByCustomerIDFromDB(customerID string) ([]Transaction, error) {
+	transactions := make([]Transaction, 0)
 	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI("mongodb://localhost:27017"))
 	if err != nil {
 		return nil, err
@@ -50,7 +77,6 @@ func getTransactionsByCustomerID(customerID string, cacheFlag bool) ([]Transacti
 
 	collection := client.Database("ecommerce").Collection("transactions")
 
-	var transactions []Transaction
 	var cursor *mongo.Cursor
 	var cursorErr error
 
@@ -75,22 +101,6 @@ func getTransactionsByCustomerID(customerID string, cacheFlag bool) ([]Transacti
 
 	if err := cursor.Err(); err != nil {
 		return nil, err
-	}
-
-	if cacheFlag {
-		// Cache data in Redis for future use
-		transactionsJSON, err := json.Marshal(transactions)
-		if err != nil {
-			return nil, err
-		}
-
-		fmt.Println("saving the transactions into the cache")
-
-		// Set the JSON data with a specific key
-		// rdb.Set(ctx, customerID, string(transactionsJSON), 0)
-
-		// Set the data as a JSON object, use transaction ID as a key
-		rdb.JSONSet(ctx, customerID, "$", string(transactionsJSON))
 	}
 
 	return transactions, nil

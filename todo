@@ -1,0 +1,5 @@
+0. have redis and mongodb working together as a write-behind cache layer (DONE)
+1. test the write behind cache in golang (inside the application)
+    1. read missing cache record from redis => redis asks to db for the record
+    2. edit, delete, add record using redis => those records are modified even in the db (after a while)
+2. ...
