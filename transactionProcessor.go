@@ -35,10 +35,6 @@ var rdb = redis.NewClient(&redis.Options{
 // save into cache (DONE)
 
 // CASE 2
-// gotta modify record directly in the db
-// modify the record in the cache, or simply delete it
-
-// CASE 3
 // modify rercord in cache
 // propagate the canges to db (rgsync) (DONE)
 
