@@ -24,13 +24,54 @@ var rdb = redis.NewClient(&redis.Options{
 	Addr: "localhost:6379",
 })
 
+// TODO: test these cases
+// CASE 0
+// cache hit
+// get from cache (DONE)
+
+// CASE 1
+// cache miss
+// get from db
+// save into cache (DONE)
+
+// CASE 2
+// gotta modify record directly in the db
+// modify the record in the cache, or simply delete it
+
+// CASE 3
+// modify rercord in cache
+// propagate the canges to db (rgsync) (DONE)
+
+func getTransactionsByCustomerID(customerID string, cacheFlag bool) ([]Transaction, error) {
+
+	redisTransactions, err := getTransactionsByCustomerIDFromRedis(customerID, cacheFlag)
+	if err != nil {
+		return nil, err
+	} else if redisTransactions == nil || len(redisTransactions) < 1 {
+		// cache miss: no transactions found in redis, use db
+		dbTransactions, err := getTransactionsByCustomerIDFromDB(customerID)
+		if err != nil {
+			return nil, err
+		}
+
+		// save into cache
+		for _, transaction := range dbTransactions {
+			rdb.Set(ctx, transaction.TransactionID, transaction, 0)
+		}
+
+		// cache miss, using db result
+		return dbTransactions, nil
+	}
+
+	// cache hit
+	return redisTransactions, nil
+}
+
 func getTransactionsByCustomerIDFromRedis(customerID string, cacheFlag bool) ([]Transaction, error) {
 
 	transactions := make([]Transaction, 0)
 
 	if cacheFlag {
-		// TODO use a smarter get as the cache entry key is the transaction ID and not customer ID
-		// check if data is cached in Redis
 		keys, err := rdb.Keys(ctx, "*").Result()
 		if err != nil {
 			return nil, err
@@ -46,22 +87,6 @@ func getTransactionsByCustomerIDFromRedis(customerID string, cacheFlag bool) ([]
 				}
 			}
 		}
-	}
-
-	if cacheFlag {
-		// Cache data in Redis for future use
-		transactionsJSON, err := json.Marshal(transactions)
-		if err != nil {
-			return nil, err
-		}
-
-		fmt.Println("saving the transactions into the cache")
-
-		// Set the JSON data with a specific key
-		// rdb.Set(ctx, customerID, string(transactionsJSON), 0)
-
-		// Set the data as a JSON object, use transaction ID as a key
-		rdb.JSONSet(ctx, customerID, "$", string(transactionsJSON))
 	}
 
 	return transactions, nil
