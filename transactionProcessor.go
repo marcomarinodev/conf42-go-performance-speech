@@ -39,28 +39,25 @@ var rdb = redis.NewClient(&redis.Options{
 // propagate the canges to db (rgsync) (DONE)
 
 func getTransactionsByCustomerID(customerID string, cacheFlag bool) ([]Transaction, error) {
-
-	redisTransactions, err := getTransactionsByCustomerIDFromRedis(customerID, cacheFlag)
-	if err != nil {
-		return nil, err
-	} else if redisTransactions == nil || len(redisTransactions) < 1 {
+	transactions, err := getTransactionsByCustomerIDFromRedis(customerID, cacheFlag)
+	if err != nil || len(transactions) == 0 {
 		// cache miss: no transactions found in redis, use db
-		dbTransactions, err := getTransactionsByCustomerIDFromDB(customerID)
+		transactions, err := getTransactionsByCustomerIDFromDB(customerID)
 		if err != nil {
 			return nil, err
 		}
 
 		// save into cache
-		for _, transaction := range dbTransactions {
+		for _, transaction := range transactions {
 			rdb.Set(ctx, transaction.TransactionID, transaction, 0)
 		}
 
 		// cache miss, using db result
-		return dbTransactions, nil
+		return transactions, nil
 	}
 
 	// cache hit
-	return redisTransactions, nil
+	return transactions, nil
 }
 
 func getTransactionsByCustomerIDFromRedis(customerID string, cacheFlag bool) ([]Transaction, error) {

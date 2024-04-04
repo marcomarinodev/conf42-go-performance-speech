@@ -10,8 +10,8 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-type Transaction struct {
-	TransactionID string    `bson:"transactionID"`
+type Movie struct {
+	MovieID       string    `bson:"movieID"`
 	Timestamp     time.Time `bson:"timestamp"`
 	CustomerID    string    `bson:"customerID"`
 	ProductName   string    `bson:"productName"`
@@ -33,40 +33,40 @@ func initDb() {
 	// Select database and collection
 	collection := client.Database("ecommerce").Collection("transactions")
 
-	// Define slices for randomization
-	productNames := []string{"Wireless Mouse", "Keyboard", "USB Cable", "Monitor", "Webcam"}
-	categories := []string{"Electronics", "Computers", "Accessories", "Office"}
-	unitPrices := []float64{29.99, 49.99, 5.99, 199.99, 89.99}
+	// Define slices for randomization with movies related stuff
+	movieTitles := []string{"Inception", "The Matrix", "Interstellar", "The Dark Knight", "Pulp Fiction"}
+	genres := []string{"Action", "Sci-Fi", "Drama", "Thriller"}
+	prices := []float64{9.99, 12.99, 7.99, 14.99, 10.99}
 	paymentMethods := []string{"Credit Card", "PayPal", "Debit Card", "Bitcoin"}
 
-	// Generate and insert transactions
+	// Generate and insert movies
 	for i := 0; i < 50000; i++ {
-		productIndex := rand.Intn(len(productNames))
-		categoryIndex := rand.Intn(len(categories))
-		priceIndex := rand.Intn(len(unitPrices))
+		titleIndex := rand.Intn(len(movieTitles))
+		genreIndex := rand.Intn(len(genres))
+		priceIndex := rand.Intn(len(prices))
 		paymentMethodIndex := rand.Intn(len(paymentMethods))
 
 		quantity := rand.Intn(5) + 1
-		unitPrice := unitPrices[priceIndex]
+		unitPrice := prices[priceIndex]
 		totalAmount := float64(quantity) * unitPrice
 
-		transaction := Transaction{
-			TransactionID: fmt.Sprintf("TXN%d", rand.Intn(100000)),
+		movie := Movie{
+			MovieID:       fmt.Sprintf("MOV%d", rand.Intn(100000)),
 			Timestamp:     time.Now(),
 			CustomerID:    fmt.Sprintf("CUST%d", rand.Intn(30)),
-			ProductName:   productNames[productIndex],
-			Category:      categories[categoryIndex],
+			ProductName:   movieTitles[titleIndex],
+			Category:      genres[genreIndex],
 			Quantity:      quantity,
 			UnitPrice:     unitPrice,
 			TotalAmount:   totalAmount,
 			PaymentMethod: paymentMethods[paymentMethodIndex],
 		}
 
-		_, err := collection.InsertOne(context.TODO(), transaction)
+		_, err := collection.InsertOne(context.TODO(), movie)
 		if err != nil {
 			panic(err)
 		}
 	}
 
-	fmt.Println("Transactions generated and inserted into MongoDB")
+	fmt.Println("Movies generated and inserted into MongoDB")
 }
