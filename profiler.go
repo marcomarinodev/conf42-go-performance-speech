@@ -24,3 +24,4 @@ func stopCPUProfile(w http.ResponseWriter, r *http.Request) {
 	pprof.StopCPUProfile()
 	fmt.Fprintln(w, "CPU profiling stopped")
 }
+

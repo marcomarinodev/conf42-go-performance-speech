@@ -1,29 +1,54 @@
 package main
 
 import (
+	"io"
+	"net/http/httptest"
+	"net/url"
 	"testing"
 )
 
-func BenchmarkFetchCustomerTransactionsWithoutCache(b *testing.B) {
-	customerId := "customer1"
+func BenchmarkRequestHandlerWithoutCache(b *testing.B) {
+	query := url.Values{}
+	query.Set("customerID", "CUST1")
+	query.Set("withCache", "false")
 
-	// Benchmark
+	req := httptest.NewRequest("GET", "/transactions?"+query.Encode(), nil)
+	rr := httptest.NewRecorder()
+
 	for i := 0; i < b.N; i++ {
-		_, err := getTransactionsByCustomerID(customerId, false)
-		if err != nil {
-			b.Fatalf("failed to get transactions: %v", err)
+		requestHandler(rr, req)
+
+		if i == 0 {
+			// Print the response body
+			respBody, err := io.ReadAll(rr.Body)
+			if err != nil {
+				b.Fatalf("Error reading response body: %v", err)
+			}
+
+			b.Logf("Body n. of bytes: %d\n", len(respBody))
 		}
 	}
 }
 
-func BenchmarkFetchCustomerTransactionsWithCache(b *testing.B) {
-	customerId := "customer1"
+func BenchmarkRequestHandlerWithCache(b *testing.B) {
+	query := url.Values{}
+	query.Set("customerID", "CUST1")
+	query.Set("withCache", "true")
 
-	// Benchmark
+	req := httptest.NewRequest("GET", "/transactions?"+query.Encode(), nil)
+	rr := httptest.NewRecorder()
+
 	for i := 0; i < b.N; i++ {
-		_, err := getTransactionsByCustomerID(customerId, true)
-		if err != nil {
-			b.Fatalf("failed to get transactions: %v", err)
+		requestHandler(rr, req)
+
+		if i == 0 {
+			// Print the response body
+			respBody, err := io.ReadAll(rr.Body)
+			if err != nil {
+				b.Fatalf("Error reading response body: %v", err)
+			}
+
+			b.Logf("Body n. of bytes: %d\n", len(respBody))
 		}
 	}
 }

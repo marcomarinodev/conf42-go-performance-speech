@@ -3,182 +3,165 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"flag"
 	"fmt"
-	"log"
 	"net/http"
+	"time"
 
-	"github.com/redis/go-redis/v9"
+	"github.com/go-redis/redis"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// write behind caching: the application reads and writes data to Redis
-// redis syncs any changed data to the db asynchronously
-// that's because a service can only add new transactions and not modifying or deleting
-// existing ones. Since services reads only from Redis, the data is always up to date.
+const (
+	MONGO_DB_NAME  = "store"
+	CACHE_EXP_TIME = 30 * time.Second
+)
 
-var ctx = context.Background()
-var rdb = redis.NewClient(&redis.Options{
-	Addr: "localhost:6379",
-})
-
-// TODO: test these cases
-// CASE 0
-// cache hit
-// get from cache (DONE)
-
-// CASE 1
-// cache miss
-// get from db
-// save into cache (DONE)
-
-// CASE 2
-// modify rercord in cache
-// propagate the canges to db (rgsync) (DONE)
-
-func getTransactionsByCustomerID(customerID string, cacheFlag bool) ([]Transaction, error) {
-	transactions, err := getTransactionsByCustomerIDFromRedis(customerID, cacheFlag)
-	if err != nil || len(transactions) == 0 {
-		// cache miss: no transactions found in redis, use db
-		transactions, err := getTransactionsByCustomerIDFromDB(customerID)
-		if err != nil {
-			return nil, err
-		}
-
-		// save into cache
-		for _, transaction := range transactions {
-			rdb.Set(ctx, transaction.TransactionID, transaction, 0)
-		}
-
-		// cache miss, using db result
-		return transactions, nil
-	}
-
-	// cache hit
-	return transactions, nil
+func main() {
+	// initDb()
+	fmt.Println("running server at 8080")
+	http.HandleFunc("/transactions", requestHandler)
+	http.ListenAndServe(":8080", nil)
 }
 
-func getTransactionsByCustomerIDFromRedis(customerID string, cacheFlag bool) ([]Transaction, error) {
+func requestHandler(w http.ResponseWriter, req *http.Request) {
+	params := req.URL.Query()
+	customerID := params.Get("customerID")
 
-	transactions := make([]Transaction, 0)
+	// Parse the withCache parameter from the query params
+	withCache := params.Get("withCache")
+	useCache := withCache == "true" // Assuming "true" indicates using cache, otherwise only MongoDB
 
-	if cacheFlag {
-		keys, err := rdb.Keys(ctx, "*").Result()
+	w.Header().Set("Content-Type", "application/json")
+
+	var respMessage map[string]interface{}
+	var respErr error
+
+	ctx := context.Background()
+
+	if useCache {
+		// Use both cache and MongoDB
+		isCached, transactionsCache, err := getFromCache(ctx)
 		if err != nil {
-			return nil, err
-		}
-
-		for _, key := range keys {
-			cachedTransaction, err := rdb.Get(ctx, key).Result()
-			if err == nil {
-				var transaction Transaction
-				err = json.Unmarshal([]byte(cachedTransaction), &transaction)
-				if err == nil && transaction.CustomerID == customerID {
-					transactions = append(transactions, transaction)
+			respErr = err
+		} else {
+			if isCached {
+				respMessage = transactionsCache
+				respMessage["_source"] = "Redis Cache"
+			} else {
+				respMessage, err = getFromDb(ctx, customerID)
+				if err != nil {
+					respErr = err
 				}
+				err = addToCache(ctx, respMessage)
+				if err != nil {
+					respErr = err
+				}
+				respMessage["_source"] = "MongoDB database"
 			}
 		}
+	} else {
+		// Use only MongoDB
+		respMessage, respErr = getFromDb(ctx, customerID)
+		if respErr == nil {
+			respMessage["_source"] = "MongoDB database"
+		}
 	}
 
-	return transactions, nil
+	if respErr != nil {
+		fmt.Fprintf(w, respErr.Error())
+	} else {
+		enc := json.NewEncoder(w)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(respMessage); err != nil {
+			fmt.Fprintf(w, err.Error())
+		}
+	}
 }
 
-func getTransactionsByCustomerIDFromDB(customerID string) ([]Transaction, error) {
-	transactions := make([]Transaction, 0)
-	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI("mongodb://localhost:27017"))
+func getFromDb(ctx context.Context, customerId string) (map[string]interface{}, error) {
+
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI("mongodb://localhost:27017"))
+
 	if err != nil {
 		return nil, err
 	}
-	defer client.Disconnect(context.TODO())
 
-	collection := client.Database("ecommerce").Collection("transactions")
+	collection := client.Database(MONGO_DB_NAME).Collection("transactions")
+	filter := bson.D{{"customerID", customerId}}
+	cur, err := collection.Find(ctx, filter)
 
-	var cursor *mongo.Cursor
-	var cursorErr error
-
-	if customerID == "" {
-		cursor, cursorErr = collection.Find(context.TODO(), bson.M{})
-	} else {
-		cursor, cursorErr = collection.Find(context.TODO(), bson.M{"customerID": customerID})
-	}
-
-	if cursorErr != nil {
-		return nil, cursorErr
-	}
-	defer cursor.Close(context.TODO())
-
-	for cursor.Next(context.TODO()) {
-		var transaction Transaction
-		if err := cursor.Decode(&transaction); err != nil {
-			return nil, err
-		}
-		transactions = append(transactions, transaction)
-	}
-
-	if err := cursor.Err(); err != nil {
+	if err != nil {
 		return nil, err
 	}
 
-	return transactions, nil
-}
+	defer cur.Close(ctx)
 
-// TODO this function is useful to proof the write behind caching
-// func editTransaction(transactionID string, newCustomerID string) error {
-// 	// get the transaction from the cache
-// 	transaction := rdb.JSONGet(ctx, transactionID, "$")
+	var records []bson.M
 
-// 	// update the transaction
-// 	err := rdb.JSONSet(ctx, transactionID, "$.customerID", newCustomerID)
-// 	if err != nil {
-// 		return err
-// 	}
+	for cur.Next(ctx) {
 
-// 	return nil
-// }
+		var record bson.M
 
-func main() {
-	initDbFlag := flag.Bool("initDb", false, "Initialize the database")
-	cacheFlag := flag.Bool("cache", false, "Cache transactions")
-	flag.Parse()
+		if err = cur.Decode(&record); err != nil {
+			return nil, err
+		}
 
-	if *initDbFlag {
-		initDb()
+		records = append(records, record)
 	}
 
-	http.HandleFunc("/allTransactions", func(w http.ResponseWriter, r *http.Request) {
-		transactions, err := getTransactionsByCustomerID("", *cacheFlag)
+	res := map[string]interface{}{
+		"data": records,
+	}
 
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
+	return res, nil
+}
 
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(transactions)
+func getFromCache(ctx context.Context) (bool, map[string]interface{}, error) {
+
+	redisClient := redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379",
+		Password: "",
+		DB:       0,
 	})
 
-	http.HandleFunc("/transactions", func(w http.ResponseWriter, r *http.Request) {
-		customerID := r.URL.Query().Get("customerID")
-		if customerID == "" {
-			http.Error(w, "Missing customerID parameter", http.StatusBadRequest)
-			return
-		}
+	transactionsCache, err := redisClient.Get("transactions_cache").Bytes()
 
-		transactions, err := getTransactionsByCustomerID(customerID, *cacheFlag)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
+	if err != nil {
+		return false, nil, nil
+	}
 
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(transactions)
+	res := map[string]interface{}{}
+
+	err = json.Unmarshal(transactionsCache, &res)
+
+	if err != nil {
+		return false, nil, nil
+	}
+
+	return true, res, nil
+}
+
+func addToCache(ctx context.Context, data map[string]interface{}) error {
+
+	redisClient := redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379",
+		Password: "",
+		DB:       0,
 	})
 
-	http.HandleFunc("/start-cpu-profile", startCPUProfile)
-	http.HandleFunc("/stop-cpu-profile", stopCPUProfile)
+	jsonString, err := json.Marshal(data)
 
-	fmt.Println("Server is running on port 8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	if err != nil {
+		return err
+	}
+
+	err = redisClient.Set("transactions_cache", jsonString, CACHE_EXP_TIME).Err()
+
+	if err != nil {
+		return nil
+	}
+
+	return nil
 }

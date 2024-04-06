@@ -26,18 +26,12 @@ def fetch_data(r):
         data = collection.find_one({'userID': key})
         if data:
             log("Data fetched from MongoDB for key %s: %s" % (key, data))
-            # Convert data to JSON and ignore _id property
-            json_data = json.dumps(data, default=str)
-            # Execute the set command with JSON data
-            execute('json.set', key, json_data)
+            # Remove ObjectId from data
+            # Execute the json.set command to store cleaned JSON data directly
+            execute('json.set', "UserEntity:" + key, '.', json.dumps(data))
         else:
             log("No data found for key %s in MongoDB" % key)
     except Exception as e:
         log("Error fetching data for key %s: %s" % (key, str(e)))
 
 GB().map(fetch_data).register(eventTypes=['keymiss'])
-
-# change redis keys with prefix that must be synced with mongodb collection
-RGJSONWriteBehind(GB, keysPrefix='UserEntity',
-                  connector=userConnector, name='UsersWriteBehind',
-                  version='99.99.99')
