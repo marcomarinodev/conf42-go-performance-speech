@@ -52,3 +52,8 @@ func BenchmarkRequestHandlerWithCache(b *testing.B) {
 		}
 	}
 }
+
+// func BenchmarkSlices(b *testing.B) {
+// 	ctx := context.Background()
+
+// }

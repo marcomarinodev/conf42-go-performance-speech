@@ -18,12 +18,7 @@ const (
 	CACHE_EXP_TIME = 30 * time.Second
 )
 
-func main() {
-	// initDb()
-	fmt.Println("running server at 8080")
-	http.HandleFunc("/transactions", requestHandler)
-	http.ListenAndServe(":8080", nil)
-}
+var workingTransactions []Transaction
 
 func requestHandler(w http.ResponseWriter, req *http.Request) {
 	params := req.URL.Query()
@@ -35,38 +30,33 @@ func requestHandler(w http.ResponseWriter, req *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 
-	var respMessage map[string]interface{}
 	var respErr error
+	var transactions []Transaction
 
 	ctx := context.Background()
 
 	if useCache {
 		// Use both cache and MongoDB
-		isCached, transactionsCache, err := getFromCache(ctx)
+		isCached, cacheTransactions, err := getFromCache(customerID)
+		transactions = cacheTransactions
 		if err != nil {
 			respErr = err
 		} else {
-			if isCached {
-				respMessage = transactionsCache
-				respMessage["_source"] = "Redis Cache"
-			} else {
-				respMessage, err = getFromDb(ctx, customerID)
+			if !isCached {
+				transactions, err = getFromDb(ctx, customerID)
 				if err != nil {
 					respErr = err
 				}
-				err = addToCache(ctx, respMessage)
+
+				err = addToCache(customerID, transactions)
 				if err != nil {
 					respErr = err
 				}
-				respMessage["_source"] = "MongoDB database"
 			}
 		}
 	} else {
 		// Use only MongoDB
-		respMessage, respErr = getFromDb(ctx, customerID)
-		if respErr == nil {
-			respMessage["_source"] = "MongoDB database"
-		}
+		transactions, respErr = getFromDb(ctx, customerID)
 	}
 
 	if respErr != nil {
@@ -74,13 +64,14 @@ func requestHandler(w http.ResponseWriter, req *http.Request) {
 	} else {
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
-		if err := enc.Encode(respMessage); err != nil {
+		if err := enc.Encode(transactions); err != nil {
 			fmt.Fprintf(w, err.Error())
 		}
+		workingTransactions = transactions
 	}
 }
 
-func getFromDb(ctx context.Context, customerId string) (map[string]interface{}, error) {
+func getFromDb(ctx context.Context, customerID string) ([]Transaction, error) {
 
 	client, err := mongo.Connect(ctx, options.Client().ApplyURI("mongodb://localhost:27017"))
 
@@ -89,7 +80,7 @@ func getFromDb(ctx context.Context, customerId string) (map[string]interface{}, 
 	}
 
 	collection := client.Database(MONGO_DB_NAME).Collection("transactions")
-	filter := bson.D{{"customerID", customerId}}
+	filter := bson.D{{"customerID", customerID}}
 	cur, err := collection.Find(ctx, filter)
 
 	if err != nil {
@@ -98,27 +89,23 @@ func getFromDb(ctx context.Context, customerId string) (map[string]interface{}, 
 
 	defer cur.Close(ctx)
 
-	var records []bson.M
+	var records []Transaction
 
 	for cur.Next(ctx) {
 
-		var record bson.M
+		var currentRecord Transaction
 
-		if err = cur.Decode(&record); err != nil {
+		if err = cur.Decode(&currentRecord); err != nil {
 			return nil, err
 		}
 
-		records = append(records, record)
+		records = append(records, currentRecord)
 	}
 
-	res := map[string]interface{}{
-		"data": records,
-	}
-
-	return res, nil
+	return records, nil
 }
 
-func getFromCache(ctx context.Context) (bool, map[string]interface{}, error) {
+func getFromCache(customerID string) (bool, []Transaction, error) {
 
 	redisClient := redis.NewClient(&redis.Options{
 		Addr:     "localhost:6379",
@@ -126,13 +113,13 @@ func getFromCache(ctx context.Context) (bool, map[string]interface{}, error) {
 		DB:       0,
 	})
 
-	transactionsCache, err := redisClient.Get("transactions_cache").Bytes()
+	transactionsCache, err := redisClient.Get(customerID).Bytes()
 
 	if err != nil {
 		return false, nil, nil
 	}
 
-	res := map[string]interface{}{}
+	var res []Transaction
 
 	err = json.Unmarshal(transactionsCache, &res)
 
@@ -143,7 +130,7 @@ func getFromCache(ctx context.Context) (bool, map[string]interface{}, error) {
 	return true, res, nil
 }
 
-func addToCache(ctx context.Context, data map[string]interface{}) error {
+func addToCache(customerID string, transactions []Transaction) error {
 
 	redisClient := redis.NewClient(&redis.Options{
 		Addr:     "localhost:6379",
@@ -151,17 +138,27 @@ func addToCache(ctx context.Context, data map[string]interface{}) error {
 		DB:       0,
 	})
 
-	jsonString, err := json.Marshal(data)
+	jsonString, err := json.Marshal(transactions)
 
 	if err != nil {
 		return err
 	}
 
-	err = redisClient.Set("transactions_cache", jsonString, CACHE_EXP_TIME).Err()
+	err = redisClient.Set(customerID, jsonString, CACHE_EXP_TIME).Err()
 
 	if err != nil {
 		return nil
 	}
 
 	return nil
+}
+
+func main() {
+	// initDb()
+	fmt.Println("running server at 8080")
+	http.HandleFunc("/transactions", requestHandler)
+	http.HandleFunc("/printTransactions", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Println(workingTransactions)
+	})
+	http.ListenAndServe(":8080", nil)
 }
