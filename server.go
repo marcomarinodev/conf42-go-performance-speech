@@ -14,15 +14,8 @@ const (
 func main() {
 	// initDb()
 	fmt.Println("running server at 8080")
-	http.HandleFunc("/getSliceTransactions", requestSliceHandler)
-	http.HandleFunc("/getMapTransactions", requestMapHandler)
-	http.HandleFunc("/processSliceTransactions", processSliceTransactions)
-	http.HandleFunc("/processMapTransactions", processMapTransactions)
-	http.HandleFunc("/printSliceTransactions", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println(workingTransactionsSlice)
-	})
-	http.HandleFunc("/printMapTransactions", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println(workingTransactionsMap)
-	})
+	http.HandleFunc("/processSliceTransactions", processTransactionsSlice)
+	// http.HandleFunc("/getMapTransactions", requestMapHandler)
+
 	http.ListenAndServe(":8080", nil)
 }

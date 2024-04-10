@@ -3,8 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"net/http"
 
 	"github.com/go-redis/redis"
 	"go.mongodb.org/mongo-driver/bson"
@@ -12,78 +10,68 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-var workingTransactionsMap map[string]Transaction
+// func processTransactionsMap(w http.ResponseWriter, req *http.Request) {
+// 	params := req.URL.Query()
+// 	customerID := params.Get("customerID")
+// 	withCache := params.Get("withCache")
+// 	useCache := withCache == "true"
+// 	prefix := params.Get("prefix")
 
-func processMapTransactions(w http.ResponseWriter, req *http.Request) {
-	// Calculate total revenue
-	totalRevenue := calculateTotalRevenueMap(workingTransactionsMap)
+// 	w.Header().Set("Content-Type", "application/json")
 
-	// Convert totalRevenue to JSON format
-	response, err := json.Marshal(map[string]float64{"total_revenue": totalRevenue})
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+// 	ctx := context.Background()
 
-	// Set content type to JSON
-	w.Header().Set("Content-Type", "application/json")
-	// Write the response
-	w.Write(response)
-}
+// 	workingTransactionsMap, respErr := getTransactionsMap(ctx, useCache, customerID)
+// 	var filteredTransactionsIDs []Transaction
 
-func calculateTotalRevenueMap(transactions map[string]Transaction) float64 {
-	totalRevenue := 0.0
-	// Iterate over each transaction in the map
-	for _, transaction := range transactions {
-		// Add the total amount of each transaction to the total revenue
-		totalRevenue += transaction.TotalAmount
-	}
-	return totalRevenue
-}
+// 	if params.Get("optimize") == "true" {
+// 		// build the trie for performant naming prefix matching
+// 		transactionsTrie := constructTrie(workingTransactionsSlice)
+// 		filteredTransactionsIDs = trieFilterByPrefix(transactionsTrie, prefix)
+// 	} else {
+// 		filteredTransactionsIDs = simpleFilterByPrefix(workingTransactionsSlice, prefix)
+// 	}
 
-func requestMapHandler(w http.ResponseWriter, req *http.Request) {
-	params := req.URL.Query()
-	customerID := params.Get("customerID")
-	withCache := params.Get("withCache")
-	useCache := withCache == "true"
+// 	if respErr != nil {
+// 		fmt.Fprintf(w, respErr.Error())
+// 	} else {
+// 		enc := json.NewEncoder(w)
+// 		enc.SetIndent("", "  ")
+// 		if err := enc.Encode(filteredTransactionsIDs); err != nil {
+// 			fmt.Fprintf(w, err.Error())
+// 		}
+// 	}
+// }
 
-	w.Header().Set("Content-Type", "application/json")
-
-	var respErr error
-
-	ctx := context.Background()
-
+func getTransactionsMap(ctx context.Context, useCache bool, customerID string) (map[string]Transaction, error) {
+	var transactionsMap map[string]Transaction
+	var err error
+	var isCached bool
 	if useCache {
-		isCached, cacheTransactions, err := getMapFromCache(customerID)
-		workingTransactionsMap = cacheTransactions
+		isCached, transactionsMap, err = getMapFromCache(customerID)
 		if err != nil {
-			respErr = err
+			return nil, err
 		} else {
 			if !isCached {
-				workingTransactionsMap, err = getMapFromDb(ctx, customerID)
+				transactionsMap, err = getMapFromDb(ctx, customerID)
 				if err != nil {
-					respErr = err
+					return nil, err
 				}
 
-				err = addMapToCache(customerID, workingTransactionsMap)
+				err = addMapToCache(customerID, transactionsMap)
 				if err != nil {
-					respErr = err
+					return nil, err
 				}
 			}
 		}
 	} else {
-		workingTransactionsMap, respErr = getMapFromDb(ctx, customerID)
-	}
-
-	if respErr != nil {
-		fmt.Fprintf(w, respErr.Error())
-	} else {
-		enc := json.NewEncoder(w)
-		enc.SetIndent("", "  ")
-		if err := enc.Encode(workingTransactionsMap); err != nil {
-			fmt.Fprintf(w, err.Error())
+		var err error
+		transactionsMap, err = getMapFromDb(ctx, customerID)
+		if err != nil {
+			return nil, err
 		}
 	}
+	return transactionsMap, nil
 }
 
 func getMapFromDb(ctx context.Context, customerID string) (map[string]Transaction, error) {

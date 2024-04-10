@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/go-redis/redis"
 	"go.mongodb.org/mongo-driver/bson"
@@ -12,70 +13,26 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-var workingTransactionsSlice []Transaction
-
-func processSliceTransactions(w http.ResponseWriter, req *http.Request) {
-	// Calculate total revenue
-	totalRevenue := calculateTotalRevenueSlice(workingTransactionsSlice)
-
-	// Convert totalRevenue to JSON format
-	response, err := json.Marshal(map[string]float64{"total_revenue": totalRevenue})
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Set content type to JSON
-	w.Header().Set("Content-Type", "application/json")
-	// Write the response
-	w.Write(response)
-}
-
-func calculateTotalRevenueSlice(transactions []Transaction) float64 {
-	totalRevenue := 0.0
-	// Iterate over each transaction in the slice
-	for _, transaction := range transactions {
-		// Add the total amount of each transaction to the total revenue
-		totalRevenue += transaction.TotalAmount
-	}
-	return totalRevenue
-}
-
-func requestSliceHandler(w http.ResponseWriter, req *http.Request) {
+func processTransactionsSlice(w http.ResponseWriter, req *http.Request) {
 	params := req.URL.Query()
 	customerID := params.Get("customerID")
-
-	// Parse the withCache parameter from the query params
 	withCache := params.Get("withCache")
-	useCache := withCache == "true" // Assuming "true" indicates using cache, otherwise only MongoDB
+	useCache := withCache == "true"
+	prefix := params.Get("prefix")
 
 	w.Header().Set("Content-Type", "application/json")
-
-	var respErr error
 
 	ctx := context.Background()
 
-	if useCache {
-		isCached, cacheTransactions, err := getSliceFromCache(customerID)
-		workingTransactionsSlice = cacheTransactions
-		if err != nil {
-			respErr = err
-		} else {
-			if !isCached {
-				workingTransactionsSlice, err = getSliceFromDb(ctx, customerID)
-				if err != nil {
-					respErr = err
-				}
+	workingTransactionsSlice, respErr := getTransactionsSlice(ctx, useCache, customerID)
+	var filteredTransactionsIDs []Transaction
 
-				err = addsSliceToCache(customerID, workingTransactionsSlice)
-				if err != nil {
-					respErr = err
-				}
-			}
-		}
+	if params.Get("ptree") == "true" {
+		// build the trie for performant naming prefix matching
+		transactionsTrie := constructPrefixTree(workingTransactionsSlice)
+		filteredTransactionsIDs = filterByPrefixTree(transactionsTrie, prefix)
 	} else {
-		// Use only MongoDB
-		workingTransactionsSlice, respErr = getSliceFromDb(ctx, customerID)
+		filteredTransactionsIDs = simpleFilterByPrefix(workingTransactionsSlice, prefix)
 	}
 
 	if respErr != nil {
@@ -83,10 +40,50 @@ func requestSliceHandler(w http.ResponseWriter, req *http.Request) {
 	} else {
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
-		if err := enc.Encode(workingTransactionsSlice); err != nil {
+		if err := enc.Encode(filteredTransactionsIDs); err != nil {
 			fmt.Fprintf(w, err.Error())
 		}
 	}
+}
+
+func simpleFilterByPrefix(transactions []Transaction, prefix string) []Transaction {
+	filteredTransactions := make([]Transaction, 0)
+	for _, transaction := range transactions {
+		if strings.HasPrefix(transaction.ProductName, prefix) {
+			filteredTransactions = append(filteredTransactions, transaction)
+		}
+	}
+	return filteredTransactions
+}
+
+func getTransactionsSlice(ctx context.Context, useCache bool, customerID string) ([]Transaction, error) {
+	var slice []Transaction
+	if useCache {
+		isCached, cacheTransactions, err := getSliceFromCache(customerID)
+		slice = cacheTransactions
+		if err != nil {
+			return nil, err
+		} else {
+			if !isCached {
+				slice, err = getSliceFromDb(ctx, customerID)
+				if err != nil {
+					return nil, err
+				}
+
+				err = addsSliceToCache(customerID, slice)
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+	} else {
+		var err error
+		slice, err = getSliceFromDb(ctx, customerID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return slice, nil
 }
 
 func getSliceFromDb(ctx context.Context, customerID string) ([]Transaction, error) {
