@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"net/http"
 
 	"github.com/go-redis/redis"
 	"go.mongodb.org/mongo-driver/bson"
@@ -10,38 +12,31 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// func processTransactionsMap(w http.ResponseWriter, req *http.Request) {
-// 	params := req.URL.Query()
-// 	customerID := params.Get("customerID")
-// 	withCache := params.Get("withCache")
-// 	useCache := withCache == "true"
-// 	prefix := params.Get("prefix")
+func processTransactionsMap(w http.ResponseWriter, req *http.Request) {
+	params := req.URL.Query()
+	customerID := params.Get("customerID")
+	withCache := params.Get("withCache")
+	useCache := withCache == "true"
+	prefix := params.Get("prefix")
 
-// 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/json")
 
-// 	ctx := context.Background()
+	ctx := context.Background()
 
-// 	workingTransactionsMap, respErr := getTransactionsMap(ctx, useCache, customerID)
-// 	var filteredTransactionsIDs []Transaction
+	workingTransactionsMap, respErr := getTransactionsMap(ctx, useCache, customerID)
 
-// 	if params.Get("optimize") == "true" {
-// 		// build the trie for performant naming prefix matching
-// 		transactionsTrie := constructTrie(workingTransactionsSlice)
-// 		filteredTransactionsIDs = trieFilterByPrefix(transactionsTrie, prefix)
-// 	} else {
-// 		filteredTransactionsIDs = simpleFilterByPrefix(workingTransactionsSlice, prefix)
-// 	}
+	filteredTransactionsIDs := simpleFilterByPrefixFromMap(workingTransactionsMap, prefix)
 
-// 	if respErr != nil {
-// 		fmt.Fprintf(w, respErr.Error())
-// 	} else {
-// 		enc := json.NewEncoder(w)
-// 		enc.SetIndent("", "  ")
-// 		if err := enc.Encode(filteredTransactionsIDs); err != nil {
-// 			fmt.Fprintf(w, err.Error())
-// 		}
-// 	}
-// }
+	if respErr != nil {
+		fmt.Fprintf(w, respErr.Error())
+	} else {
+		enc := json.NewEncoder(w)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(filteredTransactionsIDs); err != nil {
+			fmt.Fprintf(w, err.Error())
+		}
+	}
+}
 
 func getTransactionsMap(ctx context.Context, useCache bool, customerID string) (map[string]Transaction, error) {
 	var transactionsMap map[string]Transaction

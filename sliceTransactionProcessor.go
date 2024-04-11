@@ -5,55 +5,89 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
+	"time"
 
+	"github.com/beevik/prefixtree"
 	"github.com/go-redis/redis"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+var transactionsPtree *prefixtree.Tree
+
 func processTransactionsSlice(w http.ResponseWriter, req *http.Request) {
 	params := req.URL.Query()
 	customerID := params.Get("customerID")
-	withCache := params.Get("withCache")
-	useCache := withCache == "true"
+	useCache := params.Get("withCache") == "true"
 	prefix := params.Get("prefix")
-
 	w.Header().Set("Content-Type", "application/json")
-
 	ctx := context.Background()
 
+	// Retrieval stage
+	fmt.Println("Getting transactions slice...")
 	workingTransactionsSlice, respErr := getTransactionsSlice(ctx, useCache, customerID)
-	var filteredTransactionsIDs []Transaction
-
-	if params.Get("ptree") == "true" {
-		// build the trie for performant naming prefix matching
-		transactionsTrie := constructPrefixTree(workingTransactionsSlice)
-		filteredTransactionsIDs = filterByPrefixTree(transactionsTrie, prefix)
-	} else {
-		filteredTransactionsIDs = simpleFilterByPrefix(workingTransactionsSlice, prefix)
+	if respErr != nil {
+		fmt.Println(w, respErr.Error())
 	}
 
-	if respErr != nil {
-		fmt.Fprintf(w, respErr.Error())
-	} else {
-		enc := json.NewEncoder(w)
-		enc.SetIndent("", "  ")
-		if err := enc.Encode(filteredTransactionsIDs); err != nil {
-			fmt.Fprintf(w, err.Error())
-		}
+	// Filtering stage
+	fmt.Println("Filtering...")
+	now := time.Now()
+	filteredTransactionsIDs := simpleFilterByPrefixFromSlice(workingTransactionsSlice, prefix)
+	elapsed := time.Since(now)
+	fmt.Println("Finished sequential processing transactions slice: " + elapsed.String())
+
+	// Aggregation stage
+	aggregatedTransactions := aggregateTransactions(filteredTransactionsIDs)
+
+	// Processing stage
+	processedTransactions := processTransactions(aggregatedTransactions)
+
+	// Serialization stage
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(processedTransactions); err != nil {
+		fmt.Println(w, err.Error())
 	}
 }
 
-func simpleFilterByPrefix(transactions []Transaction, prefix string) []Transaction {
-	filteredTransactions := make([]Transaction, 0)
-	for _, transaction := range transactions {
-		if strings.HasPrefix(transaction.ProductName, prefix) {
-			filteredTransactions = append(filteredTransactions, transaction)
-		}
+func processTransactionsSlice_Optimized(w http.ResponseWriter, req *http.Request) {
+	params := req.URL.Query()
+	customerID := params.Get("customerID")
+	useCache := params.Get("withCache") == "true"
+	prefix := params.Get("prefix")
+	w.Header().Set("Content-Type", "application/json")
+	ctx := context.Background()
+
+	// Retrieval stage
+	fmt.Println("Getting transactions slice...")
+	workingTransactionsSlice, respErr := getTransactionsSlice(ctx, useCache, customerID)
+	if respErr != nil {
+		fmt.Println(w, respErr.Error())
 	}
-	return filteredTransactions
+
+	// Filtering stage
+	fmt.Println("Filtering...")
+	now := time.Now()
+	t := parallelFilterByPrefixFromSlice(workingTransactionsSlice, prefix, 4)
+	elapsed := time.Since(now)
+	fmt.Println("Finished parallel processing transactions slice: " + elapsed.String())
+	// Aggregation stage
+	// aggregationResult := make(chan []AggregatedTransaction)
+	// go parallelAggregateTransactions(filteringResult, aggregationResult)
+
+	// // Wait for aggregation to complete
+	// aggregatedTransactions := <-aggregationResult
+	// Processing stage
+	// processedTransactions := processTransactions(aggregatedTransactions)
+
+	// Serialization stage
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(t); err != nil {
+		fmt.Println(w, err.Error())
+	}
 }
 
 func getTransactionsSlice(ctx context.Context, useCache bool, customerID string) ([]Transaction, error) {
@@ -166,13 +200,4 @@ func addsSliceToCache(customerID string, transactions []Transaction) error {
 	}
 
 	return nil
-}
-
-func findTransactionByID(transactions []Transaction, id string) Transaction {
-	for _, tx := range transactions {
-		if tx.TransactionID == id {
-			return tx
-		}
-	}
-	return Transaction{} // Return an empty transaction if not found
 }

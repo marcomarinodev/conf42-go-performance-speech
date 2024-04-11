@@ -53,29 +53,60 @@ func BenchmarkRequestSliceHandler_WithCache(b *testing.B) {
 	}
 }
 
-func BenchmarkFiltering_Linear(b *testing.B) {
-	// Generate sample transactions
-	transactions := generateTransactionsForTest(100)
+func BenchmarkRequestSliceHandler_Serial(b *testing.B) {
+	query := url.Values{}
+	query.Set("customerID", "CUST1")
+	query.Set("withCache", "false")
 
-	b.ResetTimer()
+	req := httptest.NewRequest("GET", "/transactions?"+query.Encode(), nil)
+	rr := httptest.NewRecorder()
 
-	// Run the benchmark
 	for i := 0; i < b.N; i++ {
-		_ = simpleFilterByPrefix(transactions, "USB")
+		processTransactionsSlice(rr, req)
+
+		if i == 0 {
+			// Print the response body
+			_, err := io.ReadAll(rr.Body)
+			if err != nil {
+				b.Fatalf("Error reading response body: %v", err)
+			}
+
+			// b.Logf("Body n. of bytes: %d\n", len(respBody))
+		}
 	}
 }
 
-func BenchmarkFiltering_PrefixTree(b *testing.B) {
+func BenchmarkRequestSliceHandler_Optimized(b *testing.B) {
+	query := url.Values{}
+	query.Set("customerID", "CUST1")
+	query.Set("withCache", "false")
+
+	req := httptest.NewRequest("GET", "/transactions?"+query.Encode(), nil)
+	rr := httptest.NewRecorder()
+
+	for i := 0; i < b.N; i++ {
+		processTransactionsSlice_Optimized(rr, req)
+
+		if i == 0 {
+			// Print the response body
+			_, err := io.ReadAll(rr.Body)
+			if err != nil {
+				b.Fatalf("Error reading response body: %v", err)
+			}
+
+			// b.Logf("Body n. of bytes: %d\n", len(respBody))
+		}
+	}
+}
+
+func BenchmarkFiltering_Linear(b *testing.B) {
 	// Generate sample transactions
-	transactions := generateTransactionsForTest(100)
+	transactions := generateTransactionsForTest(1000)
 
 	b.ResetTimer()
 
-	// Construct prefix tree
-	trie := constructPrefixTree(transactions)
-
 	// Run the benchmark
 	for i := 0; i < b.N; i++ {
-		_ = filterByPrefixTree(trie, "USB")
+		_ = simpleFilterByPrefixFromSlice(transactions, "USB")
 	}
 }

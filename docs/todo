@@ -1,12 +1,4 @@
 0. have redis and mongodb working together as a write-behind cache layer (DONE)
-1. test the write behind cache in golang (inside the application)
-    1. benchmark cache off:
-        no load on db:
-
-        peak users: 100, ramp up: 80:
-
-    2. benchmark cache on :
-        no load on db:
-
-        peak users: 100, ramp up: 80:
-2. ...  
+1. have the serial pipeline (DONE)
+3. use concurreny patterns to improve the pipeline performance
+4. use more accurate tools like pprof and benchmarks
