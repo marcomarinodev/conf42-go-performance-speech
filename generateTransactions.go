@@ -30,7 +30,7 @@ func initDb() {
 
 	// Generate and insert transactions
 	fmt.Println("Generating transactions...")
-	for i := 0; i < 500000; i++ {
+	for i := 0; i < 1000000; i++ {
 		prefixIndex := rand.Intn(len(prefixes))
 		suffixIndex := rand.Intn(len(suffixes))
 		categoryIndex := rand.Intn(len(categories))

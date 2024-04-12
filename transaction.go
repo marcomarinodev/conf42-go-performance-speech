@@ -31,8 +31,8 @@ type ProcessedTransaction struct {
 	AvgQuantity float64
 }
 
-// === slice and map simple filtering ===
-func simpleFilterByPrefixFromSlice(transactions []Transaction, prefix string) []Transaction {
+// === filtering ===
+func filterByPrefix_seq(transactions []Transaction, prefix string) []Transaction {
 	filteredTransactions := make([]Transaction, 0)
 	for _, transaction := range transactions {
 		if strings.HasPrefix(transaction.ProductName, prefix) {
@@ -42,65 +42,28 @@ func simpleFilterByPrefixFromSlice(transactions []Transaction, prefix string) []
 	return filteredTransactions
 }
 
-func testFilterChan(transactions []Transaction, prefix string) []Transaction {
-	filteredTransactions := make([]Transaction, 0)
-	for _, transaction := range transactions {
-		if strings.HasPrefix(transaction.ProductName, prefix) {
-			filteredTransactions = append(filteredTransactions, transaction)
-		}
+func filterByPrefix_par(transactions []Transaction, prefix string, numWorkers int) chan []Transaction {
+	respChan := make(chan []Transaction, numWorkers)
+	wg := &sync.WaitGroup{}
+	partSize := len(transactions) / numWorkers
+	wg.Add(numWorkers)
+
+	for i := 0; i < numWorkers; i++ {
+		go filterRoutine(transactions[i*partSize:(i+1)*partSize], prefix, respChan, wg)
 	}
 
-	return filteredTransactions
+	wg.Wait()
+	close(respChan)
+	return respChan
 }
 
-func parallelFilterByPrefixFromSlice(transactions []Transaction, prefix string, n int) []Transaction {
-	var wg sync.WaitGroup
-
-	res := make(chan []Transaction)
-
-	// Calculate the number of transactions per goroutine
-	transactionsPerRoutine := len(transactions) / n
-
-	// Launch goroutines
-	for i := 0; i < n; i++ {
-		wg.Add(1)
-		startIndex := i * transactionsPerRoutine
-		endIndex := (i + 1) * transactionsPerRoutine
-		if i == n-1 {
-			// Ensure the last goroutine handles any remaining transactions
-			endIndex = len(transactions)
-		}
-		go func(start, end int) {
-			defer wg.Done()
-			res <- testFilterChan(transactions[start:end], prefix)
-		}(startIndex, endIndex)
-	}
-
-	// Goroutine to close the result channel once all goroutines are done
-	go func() {
-		wg.Wait()
-		close(res)
-	}()
-
-	var result []Transaction
-	for r := range res {
-		result = append(result, r...)
-	}
-	return result
-}
-
-func simpleFilterByPrefixFromMap(transactions map[string]Transaction, prefix string) []Transaction {
-	filteredTransactions := make([]Transaction, 0)
-	for _, transaction := range transactions {
-		if strings.HasPrefix(transaction.ProductName, prefix) {
-			filteredTransactions = append(filteredTransactions, transaction)
-		}
-	}
-	return filteredTransactions
+func filterRoutine(transactions []Transaction, prefix string, respChan chan []Transaction, wg *sync.WaitGroup) {
+	respChan <- filterByPrefix_seq(transactions, prefix)
+	wg.Done()
 }
 
 // === sequential and parallel aggregate ===
-func aggregateTransactions(transactions []Transaction) []AggregatedTransaction {
+func aggregateTransactions_seq(transactions []Transaction) []AggregatedTransaction {
 	aggregatedTransactions := make(map[string]AggregatedTransaction)
 
 	// Aggregate transactions
@@ -136,15 +99,45 @@ func aggregateTransactions(transactions []Transaction) []AggregatedTransaction {
 	return result
 }
 
-func parallelAggregateTransactions(input <-chan []Transaction, results chan<- []AggregatedTransaction) {
+func aggregatorWorker(id int, transactions <-chan []Transaction, results chan<- []AggregatedTransaction) {
+	aggregatedTransactions := make([]AggregatedTransaction, 0)
 
-	filteredTransactions := make([]Transaction, 0)
-
-	for filteredTransaction := range input {
-		filteredTransactions = append(filteredTransactions, filteredTransaction...)
+	for transaction := range transactions {
+		aggregatedTransactions = append(aggregatedTransactions, aggregateTransactions_seq(transaction)...)
 	}
 
-	results <- aggregateTransactions(filteredTransactions)
+	results <- aggregatedTransactions
+}
+
+func mergeAggregatedTransactions(aggTransactionsChan chan []AggregatedTransaction, aggregatorWg *sync.WaitGroup) map[string]AggregatedTransaction {
+	mergedAggregatedTransactions := make(map[string]AggregatedTransaction)
+
+	for aggTransactions := range aggTransactionsChan {
+		for _, aggTransaction := range aggTransactions {
+			// Retrieve the aggregated transaction from the map
+			existingAggregatedTransaction, ok := mergedAggregatedTransactions[aggTransaction.Category]
+			if !ok {
+				// If the category doesn't exist, create a new aggregated transaction
+				existingAggregatedTransaction = AggregatedTransaction{
+					Category:      aggTransaction.Category,
+					TotalQuantity: 0,
+					TotalAmount:   0,
+					Count:         0,
+				}
+			}
+
+			// Update the aggregated transaction with the current transaction data
+			existingAggregatedTransaction.TotalQuantity += aggTransaction.TotalQuantity
+			existingAggregatedTransaction.TotalAmount += aggTransaction.TotalAmount
+			existingAggregatedTransaction.Count += aggTransaction.Count
+
+			// Store the aggregated transaction back into the map
+			mergedAggregatedTransactions[aggTransaction.Category] = existingAggregatedTransaction
+		}
+		aggregatorWg.Done()
+	}
+
+	return mergedAggregatedTransactions
 }
 
 func processTransactions(aggregatedTransactions []AggregatedTransaction) []ProcessedTransaction {
