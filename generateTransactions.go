@@ -30,7 +30,7 @@ func initDb() {
 
 	// Generate and insert transactions
 	fmt.Println("Generating transactions...")
-	for i := 0; i < 1000000; i++ {
+	for i := 0; i < 2000000; i++ {
 		prefixIndex := rand.Intn(len(prefixes))
 		suffixIndex := rand.Intn(len(suffixes))
 		categoryIndex := rand.Intn(len(categories))
@@ -44,7 +44,7 @@ func initDb() {
 		transaction := Transaction{
 			TransactionID: fmt.Sprintf("TXN%d", i),
 			Timestamp:     time.Now(),
-			CustomerID:    fmt.Sprintf("CUST%d", rand.Intn(1)),
+			CustomerID:    fmt.Sprintf("CUST%d", rand.Intn(10)),
 			ProductName:   fmt.Sprintf("%s %s", prefixes[prefixIndex], suffixes[suffixIndex]),
 			Category:      categories[categoryIndex],
 			Quantity:      quantity,

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/go-redis/redis"
@@ -14,13 +13,16 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-func processTransactionsSlice(w http.ResponseWriter, req *http.Request) {
+func processTransactionPipeline(w http.ResponseWriter, req *http.Request) {
 	params := req.URL.Query()
 	customerID := params.Get("customerID")
 	useCache := params.Get("withCache") == "true"
 	prefix := params.Get("prefix")
 	w.Header().Set("Content-Type", "application/json")
 	ctx := context.Background()
+
+	// Timing the total execution
+	totalStartTime := time.Now()
 
 	// Retrieval stage
 	fmt.Println("Getting transactions slice...")
@@ -29,39 +31,33 @@ func processTransactionsSlice(w http.ResponseWriter, req *http.Request) {
 		fmt.Println(w, respErr.Error())
 	}
 
-	totalStartTime := time.Now()
-
 	// Filtering stage
 	fmt.Println("Filtering...")
 	filteringStartTime := time.Now()
-	filteredTransactions := filterByPrefix_seq(workingTransactionsSlice, prefix)
+	filteredTransactions := FilterByPrefix_seq(workingTransactionsSlice, prefix)
 	fmt.Println("Filtering took: " + time.Since(filteringStartTime).String())
 
 	// Aggregation stage
 	fmt.Println("Aggregating...")
 	aggregationStartTime := time.Now()
-	res := aggregateTransactions_seq(filteredTransactions)
+	res := AggregateTransactions_seq(filteredTransactions)
 	fmt.Println("Aggregating took: " + time.Since(aggregationStartTime).String())
 
 	// Processing stage
-	// processingStartTime := time.Now()
-	// processedTransactions := processTransactions(aggregatedTransactions)
-	// fmt.Println("Aggregating took: " + time.Since(processingStartTime).String())
-
-	for _, aggRes := range res {
-		fmt.Println(aggRes)
-	}
+	processingStartTime := time.Now()
+	processedTransactions := ProcessTransactions(res)
+	fmt.Println("Processing took: " + time.Since(processingStartTime).String())
 
 	// Serialization stage
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
-	if err := enc.Encode("ok"); err != nil {
+	if err := enc.Encode(processedTransactions); err != nil {
 		fmt.Println(w, err.Error())
 	}
 	fmt.Println("Total pipeline took: " + time.Since(totalStartTime).String())
 }
 
-func processTransactionsSlice_Optimized(w http.ResponseWriter, req *http.Request) {
+func processTransactionPipeline_Optimized(w http.ResponseWriter, req *http.Request) {
 	params := req.URL.Query()
 	customerID := params.Get("customerID")
 	useCache := params.Get("withCache") == "true"
@@ -75,52 +71,33 @@ func processTransactionsSlice_Optimized(w http.ResponseWriter, req *http.Request
 		fmt.Println(w, respErr.Error())
 	}
 
+	fmt.Printf("dataset size for customer %s: %d\n", customerID, len(workingTransactionsSlice))
+
 	totalStartTime := time.Now()
 
 	// Filtering stage
 	fmt.Println("Filtering...")
 	filteringStartTime := time.Now()
-	filterTransactionsChan := filterByPrefix_par(workingTransactionsSlice, prefix, 4)
+	filterTransactionsChan := FilterByPrefix_par(workingTransactionsSlice, prefix, 4)
 	fmt.Println("Filtering took: " + time.Since(filteringStartTime).String())
 
 	// Aggregation stage
 	fmt.Println("Aggregating...")
 	aggregationStartTime := time.Now()
 
-	aggResultChan := make(chan []AggregatedTransaction)
-	aggNumWorkers := 4
-
-	// fan-out: create worker goroutines
-	for i := 0; i < aggNumWorkers; i++ {
-		go aggregatorWorker(i, filterTransactionsChan, aggResultChan)
-	}
-
-	// fan-in: collect results
-	var aggWg sync.WaitGroup
-	aggWg.Add(aggNumWorkers)
-
-	go func() {
-		aggWg.Wait()         // Wait for all jobs to be done
-		close(aggResultChan) // Close the results channel after all jobs are processed
-	}()
-
-	res := mergeAggregatedTransactions(aggResultChan, &aggWg)
+	aggregateRes := AggregateTransactions_par(filterTransactionsChan, 4)
 
 	fmt.Println("Aggregating took: " + time.Since(aggregationStartTime).String())
 
-	for _, aggResult := range res {
-		fmt.Println(aggResult)
-	}
-
 	// Processing stage
-	// processingStartTime := time.Now()
-	// processedTransactions := processTransactions(aggregatedTransactions)
-	// fmt.Println("Aggregating took: " + time.Since(processingStartTime).String())
+	processingStartTime := time.Now()
+	processedTransactions := ProcessTransactions(aggregateRes)
+	fmt.Println("Processing took: " + time.Since(processingStartTime).String())
 
 	// Serialization stage
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
-	if err := enc.Encode("ok"); err != nil {
+	if err := enc.Encode(processedTransactions); err != nil {
 		fmt.Println(w, err.Error())
 	}
 	fmt.Println("Total pipeline took: " + time.Since(totalStartTime).String())

@@ -6,11 +6,39 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"reflect"
-	"sync"
 	"testing"
 )
 
 // ==== Benchmarking ====
+func BenchmarkPipeline(b *testing.B) {
+	allTransactions := generateTransactionsForTest(10000 * 100)
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		filteredTransactions := FilterByPrefix_seq(allTransactions, "US")
+
+		res := AggregateTransactions_seq(filteredTransactions)
+
+		_ = ProcessTransactions(res)
+	}
+
+}
+
+// ? remember to run this benchmark with the same name as the non optimized version
+func BenchmarkPipeline_Improved(b *testing.B) {
+	allTransactions := generateTransactionsForTest(10000 * 100)
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		filteredTransactions := FilterByPrefix_par(allTransactions, "US", 4)
+
+		res := AggregateTransactions_par(filteredTransactions, 4)
+
+		_ = ProcessTransactions(res)
+	}
+
+}
+
 func BenchmarkRequestSliceHandler_WithoutCache(b *testing.B) {
 	query := url.Values{}
 	query.Set("customerID", "CUST1")
@@ -20,16 +48,13 @@ func BenchmarkRequestSliceHandler_WithoutCache(b *testing.B) {
 	rr := httptest.NewRecorder()
 
 	for i := 0; i < b.N; i++ {
-		processTransactionsSlice(rr, req)
+		processTransactionPipeline(rr, req)
 
 		if i == 0 {
-			// Print the response body
 			_, err := io.ReadAll(rr.Body)
 			if err != nil {
 				b.Fatalf("Error reading response body: %v", err)
 			}
-
-			// b.Logf("Body n. of bytes: %d\n", len(respBody))
 		}
 	}
 }
@@ -43,27 +68,25 @@ func BenchmarkRequestSliceHandler_WithCache(b *testing.B) {
 	rr := httptest.NewRecorder()
 
 	for i := 0; i < b.N; i++ {
-		processTransactionsSlice(rr, req)
+		processTransactionPipeline(rr, req)
 
 		if i == 0 {
-			// Print the response body
 			_, err := io.ReadAll(rr.Body)
 			if err != nil {
 				b.Fatalf("Error reading response body: %v", err)
 			}
 
-			// b.Logf("Body n. of bytes: %d\n", len(respBody))
 		}
 	}
 }
 
 func BenchmarkFiltering(b *testing.B) {
-	// Define benchmarking logic for linear and parallel filtering
+
 	runBenchmark := func(b *testing.B, transactions []Transaction) {
 		b.ResetTimer()
 
 		for i := 0; i < b.N; i++ {
-			_ = filterByPrefix_seq(transactions, "USB")
+			_ = FilterByPrefix_seq(transactions, "USB")
 		}
 	}
 
@@ -71,29 +94,25 @@ func BenchmarkFiltering(b *testing.B) {
 		b.ResetTimer()
 
 		for i := 0; i < b.N; i++ {
-			_ = filterByPrefix_par(transactions, "USB", 4)
+			_ = FilterByPrefix_par(transactions, "USB", 4)
 		}
 	}
 
-	// Benchmark linear filtering for 5k transactions
 	b.Run("Linear5k", func(b *testing.B) {
 		transactions := generateTransactionsForTest(5 * 1000)
 		runBenchmark(b, transactions)
 	})
 
-	// Benchmark parallel filtering for 5k transactions
 	b.Run("Parallel5k", func(b *testing.B) {
 		transactions := generateTransactionsForTest(5 * 1000)
 		runParallelBenchmark(b, transactions)
 	})
 
-	// Benchmark linear filtering for 100k transactions
 	b.Run("Linear100k", func(b *testing.B) {
 		transactions := generateTransactionsForTest(1000 * 100)
 		runBenchmark(b, transactions)
 	})
 
-	// Benchmark parallel filtering for 100k transactions
 	b.Run("Parallel100k", func(b *testing.B) {
 		transactions := generateTransactionsForTest(1000 * 100)
 		runParallelBenchmark(b, transactions)
@@ -105,7 +124,7 @@ func BenchmarkAggregation(b *testing.B) {
 		b.ResetTimer()
 
 		for i := 0; i < b.N; i++ {
-			_ = aggregateTransactions_seq(transactions)
+			_ = AggregateTransactions_seq(transactions)
 		}
 	}
 
@@ -114,24 +133,7 @@ func BenchmarkAggregation(b *testing.B) {
 		b.ResetTimer()
 
 		for i := 0; i < b.N; i++ {
-			aggResultChan := make(chan []AggregatedTransaction)
-			aggNumWorkers := 4
-
-			// fan-out: create worker goroutines
-			for i := 0; i < aggNumWorkers; i++ {
-				go aggregatorWorker(i, transactionsChan, aggResultChan)
-			}
-
-			// fan-in: collect results
-			var aggWg sync.WaitGroup
-			aggWg.Add(aggNumWorkers)
-
-			go func() {
-				aggWg.Wait()         // Wait for all jobs to be done
-				close(aggResultChan) // Close the results channel after all jobs are processed
-			}()
-
-			_ = mergeAggregatedTransactions(aggResultChan, &aggWg)
+			_ = AggregateTransactions_par(transactionsChan, 4)
 		}
 	}
 
@@ -141,19 +143,16 @@ func BenchmarkAggregation(b *testing.B) {
 		runBenchmark(b, transactions)
 	})
 
-	// Benchmark parallel filtering for 5k transactions
 	b.Run("Parallel5k", func(b *testing.B) {
 		transactions := generateTransactionsForTest(5 * 1000)
 		runParallelBenchmark(b, transactions)
 	})
 
-	// Benchmark linear filtering for 100k transactions
 	b.Run("Linear100k", func(b *testing.B) {
 		transactions := generateTransactionsForTest(1000 * 100)
 		runBenchmark(b, transactions)
 	})
 
-	// Benchmark parallel filtering for 100k transactions
 	b.Run("Parallel100k", func(b *testing.B) {
 		transactions := generateTransactionsForTest(1000 * 100)
 		runParallelBenchmark(b, transactions)
@@ -166,10 +165,10 @@ func BenchmarkAggregation(b *testing.B) {
 func TestFiltering_Parallel(t *testing.T) {
 	transactions := generateTransactionsForTest(1 * 100)
 
-	expected := filterByPrefix_seq(transactions, "USB")
+	expected := FilterByPrefix_seq(transactions, "USB")
 
 	for i := 1; i <= 10; i++ {
-		respChan := filterByPrefix_par(transactions, "USB", 4)
+		respChan := FilterByPrefix_par(transactions, "USB", 4)
 
 		var actual []Transaction
 		for res := range respChan {
@@ -186,28 +185,11 @@ func TestFiltering_Parallel(t *testing.T) {
 func TestAggregation_Parallel(t *testing.T) {
 	transactions := generateTransactionsForTest(1 * 100)
 
-	expected := aggregateTransactions_seq(transactions)
+	expected := AggregateTransactions_seq(transactions)
 
 	for i := 1; i <= 10; i++ {
 		transactionsChan := formTransactionsChunksChannel(transactions, 10)
-		aggResultChan := make(chan []AggregatedTransaction)
-		aggNumWorkers := 4
-
-		// fan-out: create worker goroutines
-		for i := 0; i < aggNumWorkers; i++ {
-			go aggregatorWorker(i, transactionsChan, aggResultChan)
-		}
-
-		// fan-in: collect results
-		var aggWg sync.WaitGroup
-		aggWg.Add(aggNumWorkers)
-
-		go func() {
-			aggWg.Wait()         // Wait for all jobs to be done
-			close(aggResultChan) // Close the results channel after all jobs are processed
-		}()
-
-		res := mergeAggregatedTransactions(aggResultChan, &aggWg)
+		res := AggregateTransactions_par(transactionsChan, 4)
 
 		if !EqualAggregatedTransactions(expected, res) {
 			t.Errorf("Transactions slices are not equal")

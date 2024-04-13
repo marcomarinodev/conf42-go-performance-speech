@@ -1,0 +1,11 @@
+goos: darwin
+goarch: arm64
+pkg: transactions_sample
+BenchmarkPipeline-10    	     278	  21043484 ns/op	125951064 B/op	      42 allocs/op
+BenchmarkPipeline-10    	     284	  22219288 ns/op	125951064 B/op	      42 allocs/op
+BenchmarkPipeline-10    	     268	  22300648 ns/op	125951065 B/op	      42 allocs/op
+BenchmarkPipeline-10    	     270	  21856692 ns/op	125951065 B/op	      42 allocs/op
+BenchmarkPipeline-10    	     264	  22668645 ns/op	125951064 B/op	      42 allocs/op
+BenchmarkPipeline-10    	     265	  22668304 ns/op	125951064 B/op	      42 allocs/op
+PASS
+ok  	transactions_sample	56.300s

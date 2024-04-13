@@ -32,7 +32,7 @@ type ProcessedTransaction struct {
 }
 
 // === filtering ===
-func filterByPrefix_seq(transactions []Transaction, prefix string) []Transaction {
+func FilterByPrefix_seq(transactions []Transaction, prefix string) []Transaction {
 	filteredTransactions := make([]Transaction, 0)
 	for _, transaction := range transactions {
 		if strings.HasPrefix(transaction.ProductName, prefix) {
@@ -42,7 +42,7 @@ func filterByPrefix_seq(transactions []Transaction, prefix string) []Transaction
 	return filteredTransactions
 }
 
-func filterByPrefix_par(transactions []Transaction, prefix string, numWorkers int) chan []Transaction {
+func FilterByPrefix_par(transactions []Transaction, prefix string, numWorkers int) chan []Transaction {
 	respChan := make(chan []Transaction, numWorkers)
 	wg := &sync.WaitGroup{}
 	partSize := len(transactions) / numWorkers
@@ -58,12 +58,12 @@ func filterByPrefix_par(transactions []Transaction, prefix string, numWorkers in
 }
 
 func filterRoutine(transactions []Transaction, prefix string, respChan chan []Transaction, wg *sync.WaitGroup) {
-	respChan <- filterByPrefix_seq(transactions, prefix)
+	respChan <- FilterByPrefix_seq(transactions, prefix)
 	wg.Done()
 }
 
 // === sequential and parallel aggregate ===
-func aggregateTransactions_seq(transactions []Transaction) []AggregatedTransaction {
+func AggregateTransactions_seq(transactions []Transaction) []AggregatedTransaction {
 	aggregatedTransactions := make(map[string]AggregatedTransaction)
 
 	// Aggregate transactions
@@ -99,11 +99,31 @@ func aggregateTransactions_seq(transactions []Transaction) []AggregatedTransacti
 	return result
 }
 
+func AggregateTransactions_par(filteredTransactionsChan chan []Transaction, numWorkers int) map[string]AggregatedTransaction {
+	aggResultChan := make(chan []AggregatedTransaction)
+
+	// fan-out: create worker goroutines
+	for i := 0; i < numWorkers; i++ {
+		go aggregatorWorker(i, filteredTransactionsChan, aggResultChan)
+	}
+
+	// fan-in: collect results
+	var aggWg sync.WaitGroup
+	aggWg.Add(numWorkers)
+
+	go func() {
+		aggWg.Wait()         // Wait for all jobs to be done
+		close(aggResultChan) // Close the results channel after all jobs are processed
+	}()
+
+	return mergeAggregatedTransactions(aggResultChan, &aggWg)
+}
+
 func aggregatorWorker(id int, transactions <-chan []Transaction, results chan<- []AggregatedTransaction) {
 	aggregatedTransactions := make([]AggregatedTransaction, 0)
 
 	for transaction := range transactions {
-		aggregatedTransactions = append(aggregatedTransactions, aggregateTransactions_seq(transaction)...)
+		aggregatedTransactions = append(aggregatedTransactions, AggregateTransactions_seq(transaction)...)
 	}
 
 	results <- aggregatedTransactions
@@ -140,18 +160,30 @@ func mergeAggregatedTransactions(aggTransactionsChan chan []AggregatedTransactio
 	return mergedAggregatedTransactions
 }
 
-func processTransactions(aggregatedTransactions []AggregatedTransaction) []ProcessedTransaction {
+func ProcessTransactions(aggregatedTransactions interface{}) []ProcessedTransaction {
 	processedTransactions := make([]ProcessedTransaction, 0)
 
-	for _, aggregatedTransaction := range aggregatedTransactions {
-		processedTransaction := ProcessedTransaction{
-			Category:    "Processed_" + aggregatedTransaction.Category,
-			TotalSales:  aggregatedTransaction.TotalAmount,
-			AvgQuantity: float64(aggregatedTransaction.TotalQuantity) / float64(aggregatedTransaction.Count),
+	if aggregatedTransactionsSlice, ok := aggregatedTransactions.([]AggregatedTransaction); ok {
+		for _, aggregatedTransaction := range aggregatedTransactionsSlice {
+			processedTransactions = append(processedTransactions, processSingleTransaction(aggregatedTransaction))
 		}
+	}
 
-		processedTransactions = append(processedTransactions, processedTransaction)
+	if aggregatedTransactionsMap, ok := aggregatedTransactions.(map[string]AggregatedTransaction); ok {
+		for _, aggregatedTransaction := range aggregatedTransactionsMap {
+			processedTransactions = append(processedTransactions, processSingleTransaction(aggregatedTransaction))
+		}
 	}
 
 	return processedTransactions
+}
+
+func processSingleTransaction(aggregatedTransaction AggregatedTransaction) ProcessedTransaction {
+	processedTransaction := ProcessedTransaction{
+		Category:    "Processed_" + aggregatedTransaction.Category,
+		TotalSales:  aggregatedTransaction.TotalAmount,
+		AvgQuantity: float64(aggregatedTransaction.TotalQuantity) / float64(aggregatedTransaction.Count),
+	}
+
+	return processedTransaction
 }
