@@ -100,6 +100,66 @@ func BenchmarkFiltering(b *testing.B) {
 	})
 }
 
+func BenchmarkAggregation(b *testing.B) {
+	runBenchmark := func(b *testing.B, transactions []Transaction) {
+		b.ResetTimer()
+
+		for i := 0; i < b.N; i++ {
+			_ = aggregateTransactions_seq(transactions)
+		}
+	}
+
+	runParallelBenchmark := func(b *testing.B, transactions []Transaction) {
+		transactionsChan := formTransactionsChunksChannel(transactions, 4)
+		b.ResetTimer()
+
+		for i := 0; i < b.N; i++ {
+			aggResultChan := make(chan []AggregatedTransaction)
+			aggNumWorkers := 4
+
+			// fan-out: create worker goroutines
+			for i := 0; i < aggNumWorkers; i++ {
+				go aggregatorWorker(i, transactionsChan, aggResultChan)
+			}
+
+			// fan-in: collect results
+			var aggWg sync.WaitGroup
+			aggWg.Add(aggNumWorkers)
+
+			go func() {
+				aggWg.Wait()         // Wait for all jobs to be done
+				close(aggResultChan) // Close the results channel after all jobs are processed
+			}()
+
+			_ = mergeAggregatedTransactions(aggResultChan, &aggWg)
+		}
+	}
+
+	// Benchmark linear filtering for 5k transactions
+	b.Run("Linear5k", func(b *testing.B) {
+		transactions := generateTransactionsForTest(5 * 1000)
+		runBenchmark(b, transactions)
+	})
+
+	// Benchmark parallel filtering for 5k transactions
+	b.Run("Parallel5k", func(b *testing.B) {
+		transactions := generateTransactionsForTest(5 * 1000)
+		runParallelBenchmark(b, transactions)
+	})
+
+	// Benchmark linear filtering for 100k transactions
+	b.Run("Linear100k", func(b *testing.B) {
+		transactions := generateTransactionsForTest(1000 * 100)
+		runBenchmark(b, transactions)
+	})
+
+	// Benchmark parallel filtering for 100k transactions
+	b.Run("Parallel100k", func(b *testing.B) {
+		transactions := generateTransactionsForTest(1000 * 100)
+		runParallelBenchmark(b, transactions)
+	})
+}
+
 // ===== Tests =====
 
 // *** filtering tests ***
