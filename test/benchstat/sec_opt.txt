@@ -1,0 +1,11 @@
+goos: darwin
+goarch: arm64
+pkg: transactions_sample/test
+BenchmarkCustomPipeline_Optimized_SecOpt-10    	 1090408	      4689 ns/op	    2458 B/op	      23 allocs/op
+BenchmarkCustomPipeline_Optimized_SecOpt-10    	 1111562	      4985 ns/op	    2431 B/op	      23 allocs/op
+BenchmarkCustomPipeline_Optimized_SecOpt-10    	 1107007	      5231 ns/op	    2437 B/op	      23 allocs/op
+BenchmarkCustomPipeline_Optimized_SecOpt-10    	 1141909	      4566 ns/op	    2394 B/op	      23 allocs/op
+BenchmarkCustomPipeline_Optimized_SecOpt-10    	 1111074	      4812 ns/op	    2432 B/op	      23 allocs/op
+BenchmarkCustomPipeline_Optimized_SecOpt-10    	 1326201	      4221 ns/op	    2206 B/op	      23 allocs/op
+PASS
+ok  	transactions_sample/test	117.273s

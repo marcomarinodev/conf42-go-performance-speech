@@ -1,4 +1,4 @@
-package main
+package transaction
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-func initDb() {
+func InitDb() {
 	// Connect to MongoDB
 	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI("mongodb://localhost:27017"))
 	if err != nil {
@@ -62,7 +62,7 @@ func initDb() {
 	fmt.Println("Transactions generated and inserted into MongoDB")
 }
 
-func generateTransactionsForTest(size int) []Transaction {
+func GenerateTransactionsForTest(size int) []Transaction {
 	transactions := make([]Transaction, 0)
 	// Define slices for randomization
 	productNames := []string{"Wireless Mouse", "Keyboard", "USB Cable", "Monitor", "Webcam"}

@@ -1,0 +1,8 @@
+goos: darwin
+goarch: arm64
+pkg: transactions_sample/test
+BenchmarkCustomPipeline_Seq-10                 	      30	  46483878 ns/op	311761696 B/op	      39 allocs/op
+BenchmarkCustomPipeline_FirstOpt-10            	     100	  13113456 ns/op	234776845 B/op	     640 allocs/op
+BenchmarkCustomPipeline_Optimized_SecOpt-10    	   12980	     79316 ns/op	  120215 B/op	     328 allocs/op
+PASS
+ok  	transactions_sample/test	49.250s
