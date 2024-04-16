@@ -56,56 +56,6 @@ func StartPipeline_FirstOpt(allTransactions []Transaction, prefix string, numWor
 	return mergeAggregatedTransactions(actualAggregateResult)
 }
 
-func StartPipeline(transactions *[]Transaction, prefix string, nFilterWorkers int, nAggrWorkers int) map[string]AggregatedTransaction {
-	var filterWg sync.WaitGroup
-	var aggWg sync.WaitGroup
-	var inputFilterSliceMtx sync.Mutex
-	var inputAggregateChan = make(chan Transaction)
-	var aggregatorsMap = make(map[int]map[string]AggregatedTransaction)
-
-	// Initialize aggregators map
-	for i := 0; i < nAggrWorkers; i++ {
-		aggregatorsMap[i] = make(map[string]AggregatedTransaction)
-	}
-
-	// Start filter workers
-	for i := 0; i < nFilterWorkers; i++ {
-		filterWg.Add(1)
-		go filterWorker(
-			prefix,
-			transactions,
-			&inputFilterSliceMtx,
-			inputAggregateChan,
-			&filterWg,
-		)
-	}
-
-	// Close inputAggregateChan when all filter workers are done
-	go func() {
-		filterWg.Wait()
-		close(inputAggregateChan)
-	}()
-
-	// Start aggregate workers
-	for i := 0; i < nAggrWorkers; i++ {
-		aggWg.Add(1)
-		go aggregateWorker(i, inputAggregateChan, &aggWg, aggregatorsMap)
-	}
-
-	// Wait for all aggregate workers to finish
-	aggWg.Wait()
-
-	// Merge aggregated transactions
-	actualAggregateResult := make([]AggregatedTransaction, 0)
-	for _, aggRes := range aggregatorsMap {
-		for _, aggT := range aggRes {
-			actualAggregateResult = append(actualAggregateResult, aggT)
-		}
-	}
-
-	return mergeAggregatedTransactions(actualAggregateResult)
-}
-
 func aggregateWorker(
 	id int,
 	inputAggregateChan <-chan Transaction,
@@ -181,6 +131,7 @@ func aggregateTransactions_seq(transactions []Transaction) []AggregatedTransacti
 
 	// Aggregate transactions
 	for _, transaction := range transactions {
+
 		// Retrieve the aggregated transaction from the map
 		aggTransaction, ok := aggregatedTransactions[transaction.Category]
 		if !ok {

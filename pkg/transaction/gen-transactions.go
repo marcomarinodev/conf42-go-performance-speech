@@ -63,7 +63,7 @@ func InitDb() {
 }
 
 func GenerateTransactionsForTest(size int) []Transaction {
-	transactions := make([]Transaction, 0)
+	transactions := make([]Transaction, size)
 	// Define slices for randomization
 	productNames := []string{"Wireless Mouse", "Keyboard", "USB Cable", "Monitor", "Webcam"}
 	categories := []string{"Electronics", "Computers", "Accessories", "Office"}

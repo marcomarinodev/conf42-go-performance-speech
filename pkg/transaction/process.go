@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 )
 
@@ -70,41 +69,6 @@ func ProcessTransactionPipeline_FirstOpt(w http.ResponseWriter, req *http.Reques
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(res); err != nil {
-		fmt.Println(w, err.Error())
-	}
-	fmt.Println("Total pipeline took:", time.Since(totalStartTime))
-}
-
-func ProcessTransactionPipeline_SecOpt(w http.ResponseWriter, req *http.Request) {
-	params := req.URL.Query()
-	customerID := params.Get("customerID")
-	useCache := params.Get("withCache") == "true"
-	prefix := params.Get("prefix")
-	numFilterWorkers, _ := strconv.Atoi(params.Get("fw"))
-	numAggrWorkers, _ := strconv.Atoi(params.Get("aw"))
-	w.Header().Set("Content-Type", "application/json")
-	ctx := context.Background()
-
-	// Timing the total execution
-	totalStartTime := time.Now()
-
-	// Retrieval stage
-	fmt.Println("Getting transactions slice...")
-	workingTransactionsSlice, respErr := GetTransactionsSlice(ctx, useCache, customerID)
-	if respErr != nil {
-		fmt.Println(w, respErr.Error())
-	}
-
-	// Stage 1: Start Timer
-	stage1StartTime := time.Now()
-	_ = StartPipeline(&workingTransactionsSlice, prefix, numFilterWorkers, numAggrWorkers)
-	stage1Duration := time.Since(stage1StartTime)
-	fmt.Println("Stage 1 (StartPipeline) took:", stage1Duration)
-
-	// Serialization stage
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode("ok"); err != nil {
 		fmt.Println(w, err.Error())
 	}
 	fmt.Println("Total pipeline took:", time.Since(totalStartTime))

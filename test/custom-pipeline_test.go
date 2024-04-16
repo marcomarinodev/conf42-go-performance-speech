@@ -22,22 +22,10 @@ func BenchmarkCustomPipeline_Seq(b *testing.B) {
 func BenchmarkCustomPipeline_FirstOpt(b *testing.B) {
 	allTransactions := transaction.GenerateTransactionsForTest(2000000)
 	prefix := "U"
-	numWorkers := 20
-	b.ResetTimer()
+	numWorkers := 64
 	var x map[string]transaction.AggregatedTransaction
 	for i := 0; i < b.N; i++ {
 		x = transaction.StartPipeline_FirstOpt(allTransactions, prefix, numWorkers)
-	}
-
-	y = x
-}
-
-func BenchmarkCustomPipeline_Optimized_SecOpt(b *testing.B) {
-	allTransactions := transaction.GenerateTransactionsForTest(2000000)
-	prefix := "U"
-	var x map[string]transaction.AggregatedTransaction
-	for i := 0; i < b.N; i++ {
-		x = transaction.StartPipeline(&allTransactions, prefix, 4, 4)
 	}
 
 	y = x
@@ -58,16 +46,4 @@ func TestCustomPipelineFirstOpt(t *testing.T) {
 		t.Errorf("Transactions slices are not equal")
 	}
 
-}
-
-func TestCustomPipelineSecOpt(t *testing.T) {
-	allTransactions := transaction.GenerateTransactionsForTest(10000 * 100)
-	prefix := "US"
-
-	expected := transaction.StartPipeline_Seq(allTransactions, prefix)
-	actual := transaction.StartPipeline(&allTransactions, prefix, 4, 4)
-
-	if !EqualAggregatedTransactions(expected, actual) {
-		t.Errorf("Transactions slices are not equal")
-	}
 }

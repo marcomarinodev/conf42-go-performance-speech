@@ -1,0 +1,17 @@
+goos: darwin
+goarch: arm64
+pkg: transactions_sample/test
+BenchmarkCustomPipeline_Seq-10         	     100	  53248598 ns/op	311761696 B/op	      39 allocs/op
+BenchmarkCustomPipeline_Seq-10         	     100	  52507218 ns/op	311761696 B/op	      39 allocs/op
+BenchmarkCustomPipeline_Seq-10         	     100	  51365633 ns/op	311761696 B/op	      39 allocs/op
+BenchmarkCustomPipeline_Seq-10         	     100	  52052910 ns/op	311761696 B/op	      39 allocs/op
+BenchmarkCustomPipeline_Seq-10         	     100	  51322351 ns/op	311761696 B/op	      39 allocs/op
+BenchmarkCustomPipeline_Seq-10         	     100	  52972798 ns/op	311761696 B/op	      39 allocs/op
+BenchmarkCustomPipeline_FirstOpt-10    	     100	  25382879 ns/op	251903888 B/op	     102 allocs/op
+BenchmarkCustomPipeline_FirstOpt-10    	     100	  27190102 ns/op	251903768 B/op	     102 allocs/op
+BenchmarkCustomPipeline_FirstOpt-10    	     100	  25391502 ns/op	251903674 B/op	     102 allocs/op
+BenchmarkCustomPipeline_FirstOpt-10    	     100	  25816530 ns/op	251903709 B/op	     102 allocs/op
+BenchmarkCustomPipeline_FirstOpt-10    	     100	  25971376 ns/op	251903624 B/op	     102 allocs/op
+BenchmarkCustomPipeline_FirstOpt-10    	     100	  26888356 ns/op	251903733 B/op	     102 allocs/op
+PASS                            
+ok  	transactions_sample/test	66.371s
