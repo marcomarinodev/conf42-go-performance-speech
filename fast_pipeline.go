@@ -13,31 +13,31 @@ import (
 // goroutine in the mergeStringChans ready to forward the result
 // to the trasnformToTitle stage that takes 1 more second to capitalize
 // the string.
-func RunFastPipeline(ctx context.Context, source []string) <-chan string {
+func RunPipeline2(ctx context.Context, source []string) <-chan string {
 
-	outputChannel := producer(ctx, source)
+	outputChannel := producer2(ctx, source)
 
 	stage1Channels := []<-chan string{}
 
 	for i := 0; i < runtime.NumCPU(); i++ {
-		lowerCaseChannel := transformToLower(ctx, outputChannel)
+		lowerCaseChannel := transformToLower2(ctx, outputChannel)
 
 		stage1Channels = append(stage1Channels, lowerCaseChannel)
 	}
 
-	stage1Merged := mergeStringChans(ctx, stage1Channels...)
+	stage1Merged := mergeStringChans2(ctx, stage1Channels...)
 	stage2Channels := []<-chan string{}
 
 	for i := 0; i < runtime.NumCPU(); i++ {
-		titleCaseChannel := transformToTitle(ctx, stage1Merged)
+		titleCaseChannel := transformToTitle2(ctx, stage1Merged)
 
 		stage2Channels = append(stage2Channels, titleCaseChannel)
 	}
 
-	return mergeStringChans(ctx, stage2Channels...)
+	return mergeStringChans2(ctx, stage2Channels...)
 }
 
-func producer(ctx context.Context, strings []string) <-chan string {
+func producer2(ctx context.Context, strings []string) <-chan string {
 	outChannel := make(chan string, len(strings))
 
 	go func() {
@@ -56,7 +56,7 @@ func producer(ctx context.Context, strings []string) <-chan string {
 	return outChannel
 }
 
-func transformToLower(ctx context.Context, values <-chan string) <-chan string {
+func transformToLower2(ctx context.Context, values <-chan string) <-chan string {
 	outChannel := make(chan string)
 
 	go func() {
@@ -78,7 +78,7 @@ func transformToLower(ctx context.Context, values <-chan string) <-chan string {
 	return outChannel
 }
 
-func transformToTitle(ctx context.Context, values <-chan string) <-chan string {
+func transformToTitle2(ctx context.Context, values <-chan string) <-chan string {
 	outChannel := make(chan string)
 
 	go func() {
@@ -100,7 +100,7 @@ func transformToTitle(ctx context.Context, values <-chan string) <-chan string {
 	return outChannel
 }
 
-func mergeStringChans(ctx context.Context, cs ...<-chan string) <-chan string {
+func mergeStringChans2(ctx context.Context, cs ...<-chan string) <-chan string {
 	var wg sync.WaitGroup
 	out := make(chan string)
 

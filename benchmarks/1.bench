@@ -1,7 +1,0 @@
-goos: darwin
-goarch: arm64
-pkg: my-project
-BenchmarkFastPipeline-10    	  113403	     54420 ns/op	   12576 B/op	     148 allocs/op
-BenchmarkSlowPipeline-10    	   74666	     67666 ns/op	   21925 B/op	    1060 allocs/op
-PASS
-ok  	my-project	37.301s

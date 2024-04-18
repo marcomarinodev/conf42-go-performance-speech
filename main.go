@@ -15,7 +15,7 @@ func healthcheckHandler(w http.ResponseWriter, _ *http.Request) {
 
 func runPipelineHandler(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	RunSlowPipeline(context.Background(), []string{"FOO", "BAR", "BAX", "", "XYZ"})
+	RunPipeline1(context.Background(), []string{"FOO", "BAR", "BAX", "", "XYZ"})
 	fmt.Fprintln(w, "OK")
 }
 

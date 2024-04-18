@@ -31,11 +31,16 @@ func generateStringSlice(length, count int) []string {
 
 var source = generateStringSlice(30, 10)
 
-func BenchmarkFastPipeline(b *testing.B) {
+var resChan <-chan string
 
+func BenchmarkPipeline2(b *testing.B) {
+
+	var rChan <-chan string
 	for i := 0; i < b.N; i++ {
-		RunFastPipeline(context.Background(), source)
+		rChan = RunPipeline2(context.Background(), source)
 	}
+
+	resChan = rChan
 
 }
 
@@ -47,7 +52,7 @@ func TestFastPipeline(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	actualChan := RunFastPipeline(ctx, source)
+	actualChan := RunPipeline2(ctx, source)
 	actual := make([]string, 0)
 	for val := range actualChan {
 		actual = append(actual, val)

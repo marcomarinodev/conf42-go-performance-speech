@@ -9,31 +9,31 @@ import (
 )
 
 // go:noinline
-func RunSlowPipeline(ctx context.Context, source []string) <-chan string {
+func RunPipeline1(ctx context.Context, source []string) <-chan string {
 
-	outputChannel := producerSlow(ctx, source)
+	outputChannel := producer1(ctx, source)
 
 	stage1Channels := []<-chan string{}
 
 	for i := 0; i < runtime.NumCPU(); i++ {
-		lowerCaseChannel := transformToLowerSlow(ctx, outputChannel)
+		lowerCaseChannel := transformToLower1(ctx, outputChannel)
 
 		stage1Channels = append(stage1Channels, lowerCaseChannel)
 	}
 
-	stage1Merged := mergeStringChansSlow(ctx, stage1Channels...)
+	stage1Merged := mergeStringChans1(ctx, stage1Channels...)
 	stage2Channels := []<-chan string{}
 
 	for i := 0; i < runtime.NumCPU(); i++ {
-		titleCaseChannel := transformToTitleSlow(ctx, stage1Merged)
+		titleCaseChannel := transformToTitle1(ctx, stage1Merged)
 
 		stage2Channels = append(stage2Channels, titleCaseChannel)
 	}
 
-	return mergeStringChansSlow(ctx, stage2Channels...)
+	return mergeStringChans1(ctx, stage2Channels...)
 }
 
-func producerSlow(ctx context.Context, strings []string) <-chan string {
+func producer1(ctx context.Context, strings []string) <-chan string {
 	outChannel := make(chan string)
 
 	go func() {
@@ -52,7 +52,7 @@ func producerSlow(ctx context.Context, strings []string) <-chan string {
 	return outChannel
 }
 
-func transformToLowerSlow(ctx context.Context, values <-chan string) <-chan string {
+func transformToLower1(ctx context.Context, values <-chan string) <-chan string {
 	outChannel := make(chan string)
 
 	go func() {
@@ -80,7 +80,7 @@ func transformToLowerSlow(ctx context.Context, values <-chan string) <-chan stri
 	return outChannel
 }
 
-func transformToTitleSlow(ctx context.Context, values <-chan string) <-chan string {
+func transformToTitle1(ctx context.Context, values <-chan string) <-chan string {
 	outChannel := make(chan string)
 
 	go func() {
@@ -110,7 +110,7 @@ func transformToTitleSlow(ctx context.Context, values <-chan string) <-chan stri
 	return outChannel
 }
 
-func mergeStringChansSlow(ctx context.Context, cs ...<-chan string) <-chan string {
+func mergeStringChans1(ctx context.Context, cs ...<-chan string) <-chan string {
 	var wg sync.WaitGroup
 	out := make(chan string)
 

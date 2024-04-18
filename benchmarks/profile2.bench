@@ -1,0 +1,6 @@
+goos: darwin
+goarch: arm64
+pkg: my-project
+BenchmarkPipeline2-10    	  115761	     47967 ns/op	   11306 B/op	     146 allocs/op
+PASS
+ok  	my-project	16.694s

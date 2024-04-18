@@ -7,13 +7,16 @@ import (
 	"testing"
 )
 
-func BenchmarkSlowPipeline(b *testing.B) {
+// func BenchmarkPipeline1(b *testing.B) {
+// 	var rChan <-chan string
 
-	for i := 0; i < b.N; i++ {
-		RunSlowPipeline(context.Background(), source)
-	}
+// 	for i := 0; i < b.N; i++ {
+// 		rChan = RunPipeline1(context.Background(), source)
+// 	}
 
-}
+// 	resChan = rChan
+
+// }
 
 func TestSlowPipeline(t *testing.T) {
 	source := []string{"ANOTHERLONGSTRING", "YETANOTHERONE", "FOO", "", "BAR"}
@@ -23,7 +26,7 @@ func TestSlowPipeline(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	actualChan := RunSlowPipeline(ctx, source)
+	actualChan := RunPipeline1(ctx, source)
 	actual := make([]string, 0)
 	for val := range actualChan {
 		actual = append(actual, val)
